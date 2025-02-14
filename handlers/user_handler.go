@@ -36,3 +36,17 @@ func (h *UserHandler) SignUp(c echo.Context) error {
 
 	return c.JSON(http.StatusCreated, echo.Map{"message": "User created successfully"})
 }
+
+func (h *UserHandler) Login(c echo.Context) error {
+	var user models.User
+	if err := c.Bind(&user); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload")
+	}
+
+	token, err := h.service.Login(c.Request().Context(), &user)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"token": token})
+}

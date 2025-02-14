@@ -25,6 +25,11 @@ func (m *MockUserService) SignUp(ctx context.Context, user *models.User) error {
 	return args.Error(0)
 }
 
+func (m *MockUserService) Login(ctx context.Context, user *models.User) (string, error) {
+	args := m.Called(ctx, user)
+	return args.String(0), args.Error(1)
+}
+
 func TestUserHandler_SignUp(t *testing.T) {
 	e := echo.New()
 	mockService := new(MockUserService)
@@ -86,6 +91,73 @@ func TestUserHandler_SignUp(t *testing.T) {
 			httpError, ok := err.(*echo.HTTPError)
 			if assert.True(t, ok) {
 				assert.Equal(t, http.StatusInternalServerError, httpError.Code)
+				assert.Equal(t, assert.AnError.Error(), httpError.Message)
+			}
+		}
+
+		mockService.AssertExpectations(t)
+	})
+}
+func TestUserHandler_Login(t *testing.T) {
+	e := echo.New()
+	mockService := new(MockUserService)
+	handler := NewUserHandler(mockService)
+
+	t.Run("successful login", func(t *testing.T) {
+		user := models.User{
+			Email:    "test@example.com",
+			Password: "password",
+		}
+		userJSON, _ := json.Marshal(user)
+		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewReader(userJSON))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		mockService.On("Login", mock.Anything, &user).Return("mockToken", nil)
+
+		if assert.NoError(t, handler.Login(c)) {
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.JSONEq(t, `{"token":"mockToken"}`, rec.Body.String())
+		}
+
+		mockService.AssertExpectations(t)
+	})
+
+	t.Run("invalid request payload", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewReader([]byte("invalid json")))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := handler.Login(c)
+		if assert.Error(t, err) {
+			httpError, ok := err.(*echo.HTTPError)
+			if assert.True(t, ok) {
+				assert.Equal(t, http.StatusBadRequest, httpError.Code)
+				assert.Equal(t, "Invalid request payload", httpError.Message)
+			}
+		}
+	})
+
+	t.Run("unauthorized error", func(t *testing.T) {
+		user := models.User{
+			Email:    "test@example.com",
+			Password: "wrongpassword",
+		}
+		userJSON, _ := json.Marshal(user)
+		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewReader(userJSON))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		mockService.On("Login", mock.Anything, &user).Return("", assert.AnError)
+
+		err := handler.Login(c)
+		if assert.Error(t, err) {
+			httpError, ok := err.(*echo.HTTPError)
+			if assert.True(t, ok) {
+				assert.Equal(t, http.StatusUnauthorized, httpError.Code)
 				assert.Equal(t, assert.AnError.Error(), httpError.Message)
 			}
 		}

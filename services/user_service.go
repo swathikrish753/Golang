@@ -3,9 +3,11 @@ package services
 import (
 	"context"
 	"errors"
+	"time"
 
 	"GolangWorld/models"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -16,6 +18,7 @@ import (
 // ISP: Instead of a bloated interface, only necessary methods are defined.
 type UserService interface {
 	SignUp(ctx context.Context, user *models.User) error
+	Login(ctx context.Context, user *models.User) (string, error)
 }
 
 // MongoUserService implements UserService (Dependency Inversion Principle - DIP)
@@ -58,4 +61,24 @@ func (s *MongoUserService) SignUp(ctx context.Context, user *models.User) error 
 
 	_, err = s.collection.InsertOne(ctx, user)
 	return err
+}
+
+func (s *MongoUserService) Login(ctx context.Context, user *models.User) (string, error) {
+	var dbUser models.User
+	err := s.collection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&dbUser)
+	if err != nil {
+		return "", errors.New("invalid credentials")
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(user.Password))
+	if err != nil {
+		return "", errors.New("invalid credentials")
+	}
+	claims := jwt.MapClaims{
+		"id":    user.ID,
+		"email": user.Email,
+		"exp":   time.Now().Add(time.Hour * 72).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte("secret"))
+
 }

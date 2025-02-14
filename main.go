@@ -15,6 +15,9 @@ import (
 	"GolangWorld/services"
 
 	"github.com/joho/godotenv"
+
+	jwtMiddleware "github.com/labstack/echo-jwt"
+	"github.com/labstack/echo/middleware"
 	"github.com/labstack/echo/v4"
 )
 
@@ -42,11 +45,24 @@ func main() {
 
 	// Dependency Injection (DIP - Inject dependencies rather than hardcoding)
 	userService := services.NewMongoUserService(client)
+	listService := services.NewListUserService(client)
 	userHandler := handlers.NewUserHandler(userService)
+	listHandler := handlers.NewListHandler(listService)
 
 	// Group API routes (SRP - Routes should be managed separately)
 	apiGroup := e.Group("/api")
 	routes.RegisterRoutes(apiGroup, userHandler)
+	// Protected routes
+	r := e.Group("/users")
+
+	r.Use(jwtMiddleware.JWT(middleware.JWTConfig{
+		SigningKey:  []byte("your-secret-key"),
+		TokenLookup: "header:Authorization",
+		AuthScheme:  "Bearer",
+	}))
+	routes.RegisterListRoutes(r, listHandler)
+
+	//implement RBAC routes
 
 	// Graceful shutdown implementation (SRP - Server lifecycle management)
 	go func() {
